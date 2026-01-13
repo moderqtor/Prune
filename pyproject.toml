@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prune"
+version = "0.1.0"
+description = "Local-first CLI that produces a safe, reviewable deletion plan for a project directory."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Prune Maintainers"}]
+keywords = ["cleanup", "cli", "static-analysis"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+]
+
+[project.scripts]
+prune = "prune.cli:main"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP", "B", "SIM", "ARG"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["prune"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+

@@ -1,0 +1,2 @@
+- Use dry-run mode and inspect deletion_plan.md
+- Use deletion_plan.diff to review removals

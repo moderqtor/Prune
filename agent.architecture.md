@@ -1,0 +1,4 @@
+- CLI entrypoint: src/prune/cli.py
+- Core analysis: src/prune/analyzer.py
+- Data models: src/prune/models.py
+- Output formatting: src/prune/analyzer.py

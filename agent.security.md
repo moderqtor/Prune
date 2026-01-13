@@ -1,0 +1,3 @@
+- No network access required.
+- Treat target path as a hard sandbox.
+- Apply mode moves files to a trash directory and generates undo.sh.
