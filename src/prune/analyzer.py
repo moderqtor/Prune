@@ -6,10 +6,10 @@ import fnmatch
 import hashlib
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from prune.models import Candidate, FileInfo, Plan
 
@@ -29,6 +29,24 @@ TEXT_EXTENSIONS = {
 CONFIG_EXTENSIONS = {".toml", ".yaml", ".yml", ".json", ".ini", ".cfg"}
 SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh"}
 EXPERIMENT_DIRS = {"experiments", "scratch", "tmp", "old", "archive", "backup"}
+HARD_EXCLUDES = [
+    ".git/**",
+    ".venv/**",
+    "__pycache__/**",
+    ".pytest_cache/**",
+    ".mypy_cache/**",
+    ".ruff_cache/**",
+    "._trash_*/**",
+    "deletion_plan.json",
+    "deletion_plan.md",
+    "deletion_plan.diff",
+    "CLOSURE.md",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE",
+    "LICENSE.txt",
+    ".gitignore",
+]
 DEFAULT_EXCLUDES = [
     ".git/**",
     ".venv/**",
@@ -75,7 +93,7 @@ def analyze(
     }
     plan = Plan(
         root=str(root),
-        generated_at=datetime.now(timezone.utc).isoformat() + "Z",
+        generated_at=datetime.now(UTC).isoformat() + "Z",
         candidates=filtered,
         summary=summary,
     )
@@ -93,7 +111,7 @@ def write_plan(root: Path, plan: Plan) -> None:
 
 
 def _collect_files(root: Path, include: list[str], exclude: list[str]) -> list[Path]:
-    exclude_patterns = DEFAULT_EXCLUDES + exclude
+    exclude_patterns = HARD_EXCLUDES + DEFAULT_EXCLUDES + exclude
     results: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
@@ -176,7 +194,7 @@ def _build_python_index(file_infos: list[FileInfo]) -> dict[str, dict[str, objec
             "used": collector.used,
         }
     referenced_modules: set[str] = set()
-    for module, imported in imports.items():
+    for _module, imported in imports.items():
         for name in imported:
             if name in modules:
                 referenced_modules.add(name)
@@ -228,9 +246,7 @@ class _ImportCollector(ast.NodeVisitor):
             if (
                 isinstance(left, ast.Name)
                 and left.id == "__name__"
-                and any(
-                    isinstance(op, ast.Eq) for op in node.test.ops
-                )
+                and any(isinstance(op, ast.Eq) for op in node.test.ops)
             ):
                 for comparator in node.test.comparators:
                     if isinstance(comparator, ast.Constant) and comparator.value == "__main__":
@@ -325,7 +341,11 @@ def _find_unreferenced_files(
             module = _module_name(rel_path)
             module_meta = metadata.get(module, {})
             is_script = bool(module_meta.get("is_script"))
-            if module not in referenced_modules and not is_script and not rel_path.endswith("__init__.py"):
+            if (
+                module not in referenced_modules
+                and not is_script
+                and not rel_path.endswith("__init__.py")
+            ):
                 confidence = 0.65
                 if any(part in EXPERIMENT_DIRS for part in Path(rel_path).parts):
                     confidence = 0.75
@@ -506,21 +526,21 @@ def _render_diff_preview(root: Path, plan: Plan) -> str:
         except OSError:
             continue
         if b"\x00" in data[:2048]:
-            lines.extend([
-                f"--- {rel_path}",
-                "+++ /dev/null",
-                "@@ -1 +0,0 @@",
-                "-Binary file omitted",
-                "",
-            ])
+            lines.extend(
+                [
+                    f"--- {rel_path}",
+                    "+++ /dev/null",
+                    "@@ -1 +0,0 @@",
+                    "-Binary file omitted",
+                    "",
+                ]
+            )
             continue
         try:
             text = data.decode("utf-8", errors="ignore").splitlines()
         except UnicodeDecodeError:
             text = []
-        diff = list(
-            _unified_diff(text, fromfile=rel_path, tofile="/dev/null")
-        )
+        diff = list(_unified_diff(text, fromfile=rel_path, tofile="/dev/null"))
         lines.extend(diff)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

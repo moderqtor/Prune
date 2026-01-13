@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import os
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
+from prune import __version__
 from prune.analyzer import analyze, write_plan
 from prune.models import Plan
 
@@ -13,16 +14,29 @@ from prune.models import Plan
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="prune",
-        description="Generate a safe, reviewable deletion plan for a project directory.",
+        description=(
+            "Generate a safe, reviewable deletion plan for a project directory. "
+            "Apply mode requires --yes confirmation."
+        ),
     )
     parser.add_argument("--path", default=".", help="Target project directory")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Dry-run (default)")
     mode.add_argument("--apply", action="store_true", help="Move files to trash")
     parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm apply mode (required with --apply)",
+    )
+    parser.add_argument(
+        "--one-run",
+        action="store_true",
+        help="Use safer defaults and print a one-run banner",
+    )
+    parser.add_argument(
         "--confidence-threshold",
         type=float,
-        default=0.4,
+        default=None,
         help="Only include candidates >= threshold (0-1)",
     )
     parser.add_argument(
@@ -37,35 +51,45 @@ def main(argv: Iterable[str] | None = None) -> int:
         default=[],
         help="Glob to exclude (repeatable, relative to --path)",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.path).resolve()
     if not root.exists() or not root.is_dir():
         raise SystemExit(f"Path does not exist or is not a directory: {root}")
 
+    if args.one_run:
+        print("One-run mode: using safe defaults and dry-run unless --apply is set.")
+    if args.apply and not args.yes:
+        raise SystemExit("Refusing to apply without --yes confirmation.")
+    threshold = args.confidence_threshold
+    if threshold is None:
+        threshold = 0.65 if args.one_run else 0.4
+
     plan = analyze(
         root=root,
         include=args.include,
         exclude=args.exclude,
-        confidence_threshold=args.confidence_threshold,
+        confidence_threshold=threshold,
     )
     write_plan(root, plan)
 
     if args.apply:
-        apply_plan(root, plan)
+        apply_plan(root, plan, threshold)
         print(f"Moved files to trash under {root}")
     else:
         print(f"Dry-run complete. Plans written to {root}")
     return 0
 
 
-def apply_plan(root: Path, plan: Plan) -> None:
+def apply_plan(root: Path, plan: Plan, confidence_threshold: float) -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     trash_root = root / f"._trash_{timestamp}"
     trash_root.mkdir(parents=True, exist_ok=True)
 
     undo_lines = ["#!/bin/sh", "set -e"]
     moved: set[str] = set()
+    moved_rows: list[dict[str, str]] = []
 
     for candidate in plan.candidates:
         if candidate.kind != "file" or candidate.action != "delete":
@@ -81,10 +105,63 @@ def apply_plan(root: Path, plan: Plan) -> None:
         undo_lines.append(f'mkdir -p "{src.parent}"')
         undo_lines.append(f'mv "{dst}" "{src}"')
         moved.add(candidate.path)
+        moved_rows.append(
+            {
+                "old": src.as_posix(),
+                "new": dst.as_posix(),
+                "reason": candidate.reason,
+                "confidence": f"{candidate.confidence:.2f}",
+            }
+        )
 
     undo_path = trash_root / "undo.sh"
     undo_path.write_text("\n".join(undo_lines) + "\n")
     undo_path.chmod(0o700)
+
+    closure_path = root / "CLOSURE.md"
+    closure_path.write_text(
+        _render_closure(
+            timestamp=timestamp,
+            root=root,
+            confidence_threshold=confidence_threshold,
+            trash_root=trash_root,
+            undo_path=undo_path,
+            moved_rows=moved_rows,
+        )
+    )
+
+
+def _render_closure(
+    timestamp: str,
+    root: Path,
+    confidence_threshold: float,
+    trash_root: Path,
+    undo_path: Path,
+    moved_rows: list[dict[str, str]],
+) -> str:
+    lines = [
+        "# CLOSURE",
+        "",
+        "Apply mode completed. Review this file before deleting the trash directory.",
+        "",
+        f"Timestamp: {timestamp}",
+        f"Root: {root}",
+        f"Confidence threshold: {confidence_threshold:.2f}",
+        f"Trash directory: {trash_root}",
+        f"Undo script: {undo_path}",
+        "",
+        "## Moved files",
+    ]
+    if not moved_rows:
+        lines.append("- (none)")
+    else:
+        for row in moved_rows:
+            lines.append(
+                f"- {row['old']} -> {row['new']} "
+                f"(reason={row['reason']}, confidence={row['confidence']})"
+            )
+    lines.append("")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

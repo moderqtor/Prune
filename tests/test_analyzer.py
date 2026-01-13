@@ -52,3 +52,17 @@ def test_dead_code_detection(tmp_path: Path) -> None:
 
     dead = [c for c in plan.candidates if c.reason == "dead_code"]
     assert any(c.details.get("symbol") == "unused" for c in dead)
+
+
+def test_hard_excludes_skip_critical_files(tmp_path: Path) -> None:
+    _write(tmp_path / "README.md", "readme")
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "x"\n')
+
+    plan = analyze(
+        tmp_path,
+        include=["README.md", "pyproject.toml"],
+        exclude=[],
+        confidence_threshold=0.0,
+    )
+
+    assert all(c.path not in {"README.md", "pyproject.toml"} for c in plan.candidates)
