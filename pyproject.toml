@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prune"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first CLI that produces a safe, reviewable deletion plan for a project directory."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,7 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2.1",
   "pytest>=7.4.0",
   "ruff>=0.1.0",
 ]
@@ -29,6 +30,7 @@ prune = "prune.cli:main"
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ARG"]
@@ -39,3 +41,16 @@ known-first-party = ["prune"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+
+[tool.hatch.build]
+exclude = [
+  "/.venv",
+  "/venv",
+  "/dist",
+  "/build",
+  "/.pytest_cache",
+  "/__pycache__",
+  "/.git",
+  "/gumroad_upload.zip",
+  "/gumroad_upload",
+]

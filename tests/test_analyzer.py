@@ -48,7 +48,13 @@ def test_dead_code_detection(tmp_path: Path) -> None:
         ).lstrip(),
     )
 
-    plan = analyze(tmp_path, include=[], exclude=[], confidence_threshold=0.0)
+    plan = analyze(
+        tmp_path,
+        include=[],
+        exclude=[],
+        confidence_threshold=0.0,
+        dead_code=True,
+    )
 
     dead = [c for c in plan.candidates if c.reason == "dead_code"]
     assert any(c.details.get("symbol") == "unused" for c in dead)
@@ -66,3 +72,12 @@ def test_hard_excludes_skip_critical_files(tmp_path: Path) -> None:
     )
 
     assert all(c.path not in {"README.md", "pyproject.toml"} for c in plan.candidates)
+
+
+def test_experiment_python_increases_confidence(tmp_path: Path) -> None:
+    _write(tmp_path / "experiments" / "scratch.py", "value = 1\n")
+
+    plan = analyze(tmp_path, include=[], exclude=[], confidence_threshold=0.0)
+
+    candidates = [c for c in plan.candidates if c.reason == "unreferenced_python"]
+    assert any(c.path == "experiments/scratch.py" and c.confidence == 0.75 for c in candidates)

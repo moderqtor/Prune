@@ -1,28 +1,34 @@
+# python caches
 __pycache__/
 *.pyc
-.venv/
-.venv*/
-.dist/
-.build/
-*.egg-info/
-.deletion_plans/
-._trash_*/
 
-# local artifacts
-FETCH_HEAD
-demo.cast
+# virtual environments
+.venv/
+venv/
+
+# build artifacts
+dist/
+build/
+*.egg-info/
+
+# tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # prune outputs
 /deletion_plan.json
 /deletion_plan.md
 /deletion_plan.diff
+._trash_*/
+CLOSURE.md
 
-# python caches
-__pycache__/
-*.pyc
-
-# local recordings
+# local artifacts
+.env
+FETCH_HEAD
 demo.cast
+.deletion_plans/
 
-# gumroad staging folder
-/gumroad_upload/
+# release artifacts
+.gumroad_upload
+gumroad_upload/*.zip

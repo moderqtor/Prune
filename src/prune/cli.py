@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 from prune import __version__
-from prune.analyzer import analyze, write_plan
 from prune.models import Plan
 
 
@@ -40,6 +39,11 @@ def main(argv: Iterable[str] | None = None) -> int:
         help="Only include candidates >= threshold (0-1)",
     )
     parser.add_argument(
+        "--experimental-dead-code",
+        action="store_true",
+        help="Include experimental symbol-level dead-code candidates",
+    )
+    parser.add_argument(
         "--include",
         action="append",
         default=[],
@@ -60,17 +64,36 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     if args.one_run:
         print("One-run mode: using safe defaults and dry-run unless --apply is set.")
+    if args.experimental_dead_code:
+        print("Including experimental symbol-level dead-code analysis...")
     if args.apply and not args.yes:
         raise SystemExit("Refusing to apply without --yes confirmation.")
     threshold = args.confidence_threshold
     if threshold is None:
         threshold = 0.65 if args.one_run else 0.4
 
+    excludes = list(args.exclude)
+    if args.one_run:
+        excludes.extend(
+            [
+                "tests/**",
+                "docs/**",
+                "examples/**",
+                ".github/**",
+                ".devcontainer/**",
+                "**/*.md",
+                "**/*.rst",
+            ]
+        )
+
+    from prune.analyzer import analyze, write_plan
+
     plan = analyze(
         root=root,
         include=args.include,
-        exclude=args.exclude,
+        exclude=excludes,
         confidence_threshold=threshold,
+        dead_code=args.experimental_dead_code,
     )
     write_plan(root, plan)
 

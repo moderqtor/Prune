@@ -67,12 +67,13 @@ def analyze(
     include: list[str],
     exclude: list[str],
     confidence_threshold: float,
+    dead_code: bool = False,
 ) -> Plan:
     root = root.resolve()
     files = _collect_files(root, include, exclude)
     file_infos = [_file_info(root, path) for path in files]
     text_refs = _build_text_reference_index(file_infos)
-    python_index = _build_python_index(file_infos)
+    python_index = _build_python_index(file_infos, dead_code=dead_code)
     candidates: list[Candidate] = []
 
     candidates.extend(_find_duplicate_files(file_infos))
@@ -80,7 +81,10 @@ def analyze(
     candidates.extend(_find_orphan_configs(file_infos, text_refs))
     candidates.extend(_find_unused_scripts(file_infos, text_refs))
     candidates.extend(_find_experiment_artifacts(file_infos))
-    candidates.extend(_find_dead_code(python_index))
+    if dead_code:
+        from prune.experimental.dead_code import _find_dead_code
+
+        candidates.extend(_find_dead_code(python_index))
 
     filtered = [c for c in candidates if c.confidence >= confidence_threshold]
     filtered.sort(key=lambda c: (c.kind, c.path, c.reason))
@@ -90,6 +94,7 @@ def analyze(
         "candidates": len(filtered),
         "by_reason": _summarize_by_reason(filtered),
         "confidence_threshold": confidence_threshold,
+        "dead_code": dead_code,
     }
     plan = Plan(
         root=str(root),
@@ -165,7 +170,9 @@ def _build_text_reference_index(file_infos: list[FileInfo]) -> set[str]:
     return referenced
 
 
-def _build_python_index(file_infos: list[FileInfo]) -> dict[str, dict[str, object]]:
+def _build_python_index(
+    file_infos: list[FileInfo], dead_code: bool
+) -> dict[str, dict[str, object]]:
     modules: dict[str, Path] = {}
     module_relpaths: dict[str, str] = {}
     for info in file_infos:
@@ -182,7 +189,7 @@ def _build_python_index(file_infos: list[FileInfo]) -> dict[str, dict[str, objec
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        collector = _ImportCollector(module)
+        collector = _ImportCollector(module, dead_code=dead_code)
         collector.visit(tree)
         imports[module] = collector.imports
         module_metadata[module] = {
@@ -214,8 +221,9 @@ def _module_name(rel_path: str) -> str:
 
 
 class _ImportCollector(ast.NodeVisitor):
-    def __init__(self, module_name: str) -> None:
+    def __init__(self, module_name: str, dead_code: bool) -> None:
         self.module_name = module_name
+        self.dead_code = dead_code
         self.imports: set[str] = set()
         self.is_script = False
         self.exports: set[str] = set()
@@ -254,21 +262,24 @@ class _ImportCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:  # noqa: N802
-        for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == "__all__":
-                self.exports.update(_extract_string_list(node.value))
+        if self.dead_code:
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "__all__":
+                    self.exports.update(_extract_string_list(node.value))
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
-        self.defs[node.name] = node.lineno
+        if self.dead_code:
+            self.defs[node.name] = node.lineno
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
-        self.defs[node.name] = node.lineno
+        if self.dead_code:
+            self.defs[node.name] = node.lineno
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:  # noqa: N802
-        if isinstance(node.ctx, ast.Load):
+        if self.dead_code and isinstance(node.ctx, ast.Load):
             self.used.add(node.id)
         self.generic_visit(node)
 
@@ -447,35 +458,6 @@ def _find_experiment_artifacts(file_infos: list[FileInfo]) -> list[Candidate]:
     return candidates
 
 
-def _find_dead_code(python_index: dict[str, dict[str, object]]) -> list[Candidate]:
-    candidates: list[Candidate] = []
-    metadata = python_index.get("metadata", {})
-    for module, meta in metadata.items():
-        defs = meta.get("defs", {})
-        used = meta.get("used", set())
-        exports = meta.get("exports", set())
-        rel_path = meta.get("rel_path")
-        if not isinstance(rel_path, str):
-            continue
-        for name, lineno in defs.items():
-            if name in used or name in exports:
-                continue
-            confidence = 0.5
-            if name.startswith("_"):
-                confidence = 0.4
-            candidates.append(
-                Candidate(
-                    kind="code",
-                    action="manual_review",
-                    path=rel_path,
-                    reason="dead_code",
-                    confidence=confidence,
-                    details={"symbol": name, "line": lineno, "module": module},
-                )
-            )
-    return candidates
-
-
 def _summarize_by_reason(candidates: list[Candidate]) -> dict[str, int]:
     summary: dict[str, int] = {}
     for candidate in candidates:
@@ -496,6 +478,10 @@ def _render_markdown(plan: Plan) -> str:
         "",
         "## Summary",
     ]
+    if "confidence_threshold" in plan.summary:
+        lines.append(f"- confidence_threshold: {plan.summary['confidence_threshold']}")
+    if "dead_code" in plan.summary:
+        lines.append(f"- dead_code: {plan.summary['dead_code']}")
     for reason, count in plan.summary.get("by_reason", {}).items():
         lines.append(f"- {reason}: {count}")
     lines.append("")
