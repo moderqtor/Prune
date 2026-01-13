@@ -1,5 +1,7 @@
 # prune
 
+![PRUNE demo](assets/demo.gif)
+
 Local-first CLI that analyzes a project directory and produces a safe, reviewable deletion plan
 for likely-unused files, dead code, and redundant artifacts.
 
