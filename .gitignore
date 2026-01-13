@@ -23,3 +23,6 @@ __pycache__/
 
 # local recordings
 demo.cast
+
+# gumroad staging folder
+/gumroad_upload/
