@@ -7,3 +7,7 @@ __pycache__/
 *.egg-info/
 .deletion_plans/
 ._trash_*/
+
+# local artifacts
+FETCH_HEAD
+demo.cast
