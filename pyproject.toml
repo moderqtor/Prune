@@ -18,6 +18,12 @@ classifiers = [
   "Operating System :: MacOS",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+  "ruff>=0.1.0",
+]
+
 [project.scripts]
 prune = "prune.cli:main"
 
@@ -30,4 +36,3 @@ known-first-party = ["prune"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-

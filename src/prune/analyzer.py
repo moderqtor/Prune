@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -75,7 +75,7 @@ def analyze(
     }
     plan = Plan(
         root=str(root),
-        generated_at=datetime.utcnow().isoformat() + "Z",
+        generated_at=datetime.now(timezone.utc).isoformat() + "Z",
         candidates=filtered,
         summary=summary,
     )
@@ -167,14 +167,14 @@ def _build_python_index(file_infos: list[FileInfo]) -> dict[str, dict[str, objec
         collector = _ImportCollector(module)
         collector.visit(tree)
         imports[module] = collector.imports
-            module_metadata[module] = {
-                "path": path,
-                "rel_path": module_relpaths.get(module, path.as_posix()),
-                "is_script": collector.is_script,
-                "exports": collector.exports,
-                "defs": collector.defs,
-                "used": collector.used,
-            }
+        module_metadata[module] = {
+            "path": path,
+            "rel_path": module_relpaths.get(module, path.as_posix()),
+            "is_script": collector.is_script,
+            "exports": collector.exports,
+            "defs": collector.defs,
+            "used": collector.used,
+        }
     referenced_modules: set[str] = set()
     for module, imported in imports.items():
         for name in imported:
