@@ -29,7 +29,10 @@ prune = "prune.cli:main"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ARG"]
+
 
 [tool.ruff.lint.isort]
 known-first-party = ["prune"]
