@@ -51,7 +51,7 @@ prune --path . --apply --yes
 
 Undo a previous apply:
 ```
-./._trash_YYYYMMDD_HHMMSS/undo.sh
+./undo.sh
 ```
 
 One-run safe defaults (threshold 0.65 + common exclusions):
@@ -87,7 +87,7 @@ prune --path . --experimental-dead-code --confidence-threshold 0.9 \
 - `deletion_plan.json`: structured results for tooling
 - `deletion_plan.md`: human-readable plan with warnings
 - `deletion_plan.diff`: unified diff preview of file removals
-- `undo.sh`: only in apply mode; stored inside the trash directory
+- `undo.sh`: only in apply mode; stored at the target root (and copied into the trash directory)
 - `CLOSURE.md`: written after apply with a full move manifest
 
 ## Troubleshooting

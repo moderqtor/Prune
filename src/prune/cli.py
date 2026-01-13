@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -107,10 +108,20 @@ def main(argv: Iterable[str] | None = None) -> int:
 
 def apply_plan(root: Path, plan: Plan, confidence_threshold: float) -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    trash_root = root / f"._trash_{timestamp}"
+    trash_dir_name = f"._trash_{timestamp}"
+    trash_root = root / trash_dir_name
     trash_root.mkdir(parents=True, exist_ok=True)
 
-    undo_lines = ["#!/bin/sh", "set -e"]
+    undo_lines = [
+        "#!/bin/sh",
+        "set -eu",
+        'ROOT="$(cd "$(dirname "$0")" && pwd)"',
+        f'TRASH_DIR="$ROOT/{trash_dir_name}"',
+        'if [ ! -d "$TRASH_DIR" ]; then',
+        '  echo "Trash directory missing: $TRASH_DIR" >&2',
+        "  exit 1",
+        "fi",
+    ]
     moved: set[str] = set()
     moved_rows: list[dict[str, str]] = []
 
@@ -119,15 +130,20 @@ def apply_plan(root: Path, plan: Plan, confidence_threshold: float) -> None:
             continue
         if candidate.path in moved:
             continue
-        src = root / candidate.path
+        rel_path = candidate.path
+        src = root / rel_path
         if not src.exists():
             continue
-        dst = trash_root / candidate.path
+        dst = trash_root / rel_path
         dst.parent.mkdir(parents=True, exist_ok=True)
         os.replace(src, dst)
-        undo_lines.append(f'mkdir -p "{src.parent}"')
-        undo_lines.append(f'mv "{dst}" "{src}"')
-        moved.add(candidate.path)
+        parent = Path(rel_path).parent
+        if parent != Path("."):
+            undo_lines.append(f'mkdir -p "$ROOT"/{shlex.quote(parent.as_posix())}')
+        undo_lines.append(
+            f'mv "$TRASH_DIR"/{shlex.quote(rel_path)} "$ROOT"/{shlex.quote(rel_path)}'
+        )
+        moved.add(rel_path)
         moved_rows.append(
             {
                 "old": src.as_posix(),
@@ -137,9 +153,13 @@ def apply_plan(root: Path, plan: Plan, confidence_threshold: float) -> None:
             }
         )
 
-    undo_path = trash_root / "undo.sh"
-    undo_path.write_text("\n".join(undo_lines) + "\n")
+    undo_path = root / "undo.sh"
+    undo_contents = "\n".join(undo_lines) + "\n"
+    undo_path.write_text(undo_contents)
     undo_path.chmod(0o700)
+    trash_undo_path = trash_root / "undo.sh"
+    trash_undo_path.write_text(undo_contents)
+    trash_undo_path.chmod(0o700)
 
     closure_path = root / "CLOSURE.md"
     closure_path.write_text(

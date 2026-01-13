@@ -11,6 +11,7 @@ conservative baseline, cleans packaging, and adds CI/tests for the new behavior.
   enabled.
 - Default confidence threshold is 0.4; `--one-run` uses 0.65.
 - Plan summaries now record `dead_code` and the chosen `confidence_threshold` in outputs.
+- Apply mode now writes `undo.sh` at the target root and copies it into the trash directory.
 
 ### Structural changes
 - Experimental dead-code logic lives in `src/prune/experimental/dead_code.py` with a clear module
