@@ -11,3 +11,15 @@ __pycache__/
 # local artifacts
 FETCH_HEAD
 demo.cast
+
+# prune outputs
+/deletion_plan.json
+/deletion_plan.md
+/deletion_plan.diff
+
+# python caches
+__pycache__/
+*.pyc
+
+# local recordings
+demo.cast
