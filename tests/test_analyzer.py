@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from prune.analyzer import analyze
+from prune.analyzer import _module_name_for_path, analyze
 
 
 def _write(path: Path, content: str) -> None:
@@ -81,3 +81,23 @@ def test_experiment_python_increases_confidence(tmp_path: Path) -> None:
 
     candidates = [c for c in plan.candidates if c.reason == "unreferenced_python"]
     assert any(c.path == "experiments/scratch.py" and c.confidence == 0.75 for c in candidates)
+
+
+def test_src_layout_module_resolution() -> None:
+    root = Path("/repo")
+    module = _module_name_for_path(root, root / "src" / "prune" / "analyzer.py")
+    assert module == "prune.analyzer"
+
+
+def test_src_layout_imports_prevent_false_unreferenced(tmp_path: Path) -> None:
+    _write(tmp_path / "src" / "prune" / "__init__.py", "")
+    _write(tmp_path / "src" / "prune" / "a.py", "def helper():\n    return 1\n")
+    _write(
+        tmp_path / "src" / "prune" / "b.py",
+        "from prune import a\n\nvalue = a.helper()\n",
+    )
+
+    plan = analyze(tmp_path, include=[], exclude=[], confidence_threshold=0.0)
+
+    unreferenced = [c for c in plan.candidates if c.reason == "unreferenced_python"]
+    assert all(c.path != "src/prune/a.py" for c in unreferenced)

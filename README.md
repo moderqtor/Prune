@@ -31,6 +31,7 @@ prune --path .
 - Apply mode moves files to a timestamped trash directory and writes an undo script.
 - No network access and no telemetry.
 - Experimental dead-code detection is disabled by default.
+- Venvs and common caches (`.venv/`, `venv/`, `__pycache__/`, `.pytest_cache/`) are excluded by default.
 
 ## What it does
 - Walks a project directory and builds a file map.

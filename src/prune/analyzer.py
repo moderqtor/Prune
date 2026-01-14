@@ -70,14 +70,15 @@ def analyze(
     dead_code: bool = False,
 ) -> Plan:
     root = root.resolve()
-    files = _collect_files(root, include, exclude)
+    combined_excludes = DEFAULT_EXCLUDES + exclude
+    files = _collect_files(root, include, combined_excludes)
     file_infos = [_file_info(root, path) for path in files]
     text_refs = _build_text_reference_index(file_infos)
-    python_index = _build_python_index(file_infos, dead_code=dead_code)
+    python_index = _build_python_index(root, file_infos, dead_code=dead_code)
     candidates: list[Candidate] = []
 
     candidates.extend(_find_duplicate_files(file_infos))
-    candidates.extend(_find_unreferenced_files(file_infos, text_refs, python_index))
+    candidates.extend(_find_unreferenced_files(root, file_infos, text_refs, python_index))
     candidates.extend(_find_orphan_configs(file_infos, text_refs))
     candidates.extend(_find_unused_scripts(file_infos, text_refs))
     candidates.extend(_find_experiment_artifacts(file_infos))
@@ -116,7 +117,7 @@ def write_plan(root: Path, plan: Plan) -> None:
 
 
 def _collect_files(root: Path, include: list[str], exclude: list[str]) -> list[Path]:
-    exclude_patterns = HARD_EXCLUDES + DEFAULT_EXCLUDES + exclude
+    exclude_patterns = HARD_EXCLUDES + exclude
     results: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
@@ -171,14 +172,14 @@ def _build_text_reference_index(file_infos: list[FileInfo]) -> set[str]:
 
 
 def _build_python_index(
-    file_infos: list[FileInfo], dead_code: bool
+    root: Path, file_infos: list[FileInfo], dead_code: bool
 ) -> dict[str, dict[str, object]]:
     modules: dict[str, Path] = {}
     module_relpaths: dict[str, str] = {}
     for info in file_infos:
         if info.extension != ".py":
             continue
-        module_name = _module_name(info.rel_path)
+        module_name = _module_name_for_path(root, info.path)
         modules[module_name] = info.path
         module_relpaths[module_name] = info.rel_path
     imports: dict[str, set[str]] = {}
@@ -212,10 +213,12 @@ def _build_python_index(
     }
 
 
-def _module_name(rel_path: str) -> str:
-    path = Path(rel_path)
-    parts = list(path.with_suffix("").parts)
-    if parts[-1] == "__init__":
+def _module_name_for_path(root: Path, path: Path) -> str:
+    rel_path = path.relative_to(root)
+    parts = list(rel_path.with_suffix("").parts)
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    if parts and parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts)
 
@@ -338,6 +341,7 @@ def _hash_file(path: Path) -> str:
 
 
 def _find_unreferenced_files(
+    root: Path,
     file_infos: list[FileInfo],
     text_refs: set[str],
     python_index: dict[str, dict[str, object]],
@@ -349,7 +353,7 @@ def _find_unreferenced_files(
     for info in file_infos:
         rel_path = info.rel_path
         if info.extension == ".py":
-            module = _module_name(rel_path)
+            module = _module_name_for_path(root, info.path)
             module_meta = metadata.get(module, {})
             is_script = bool(module_meta.get("is_script"))
             if (
